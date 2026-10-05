@@ -2,17 +2,25 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+const MCP_PATH = '/mcp';
+
 export default function HomePage() {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState(null);
   const [draft, setDraft] = useState(null);
+  const [activeView, setActiveView] = useState('overview');
   const [installPrompt, setInstallPrompt] = useState(null);
   const [installed, setInstalled] = useState(false);
+  const [toast, setToast] = useState('');
+  const [showGmailModal, setShowGmailModal] = useState(false);
+  const [ruleName, setRuleName] = useState('');
+  const [ruleInstruction, setRuleInstruction] = useState('');
 
   async function refresh() {
     const response = await fetch('/api/agent', { cache: 'no-store' });
-    setData(await response.json());
+    const payload = await response.json();
+    setData(payload);
   }
 
   useEffect(() => {
@@ -35,6 +43,7 @@ export default function HomePage() {
     const onInstalled = () => {
       setInstalled(true);
       setInstallPrompt(null);
+      notify('Email AI Agent installed on your device.');
     };
 
     window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
@@ -46,8 +55,17 @@ export default function HomePage() {
     };
   }, []);
 
+  function notify(message) {
+    setToast(message);
+    window.clearTimeout(window.__emailAgentToast);
+    window.__emailAgentToast = window.setTimeout(() => setToast(''), 2600);
+  }
+
   async function installApp() {
-    if (installed) return;
+    if (installed) {
+      notify('Email AI Agent is already installed.');
+      return;
+    }
 
     if (installPrompt) {
       await installPrompt.prompt();
@@ -61,13 +79,13 @@ export default function HomePage() {
 
     const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
     if (isIos) {
-      alert('Safari mein Share button dabao, phir “Add to Home Screen” select karo.');
+      notify('Safari: Share → Add to Home Screen.');
     } else {
-      alert('Chrome menu (⋮) kholo aur “Add to Home screen” ya “Install app” select karo.');
+      notify('Chrome: menu ⋮ → Add to Home screen / Install app.');
     }
   }
 
-  async function action(payload) {
+  async function action(payload, successMessage) {
     setBusy(true);
     try {
       const response = await fetch('/api/agent', {
@@ -76,10 +94,56 @@ export default function HomePage() {
         body: JSON.stringify(payload)
       });
       const result = await response.json();
+
+      if (!response.ok || result.ok === false) {
+        throw new Error(result.error || result.message || 'Action failed');
+      }
+
       if (result.draft) setDraft(result.draft);
       await refresh();
+      if (successMessage) notify(successMessage);
+      return result;
+    } catch (error) {
+      notify(error.message || 'Action failed');
+      return null;
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function copyMcpUrl() {
+    const url = `${window.location.origin}${MCP_PATH}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      notify('MCP URL copied.');
+    } catch {
+      notify(url);
+    }
+  }
+
+  async function connectGmail() {
+    if (data?.status?.gmailConnected) {
+      notify('Gmail is already connected.');
+      return;
+    }
+    setShowGmailModal(true);
+  }
+
+  async function addRule(event) {
+    event.preventDefault();
+    if (!ruleName.trim() || !ruleInstruction.trim()) {
+      notify('Rule name aur instruction dono required hain.');
+      return;
+    }
+
+    const result = await action(
+      { action: 'add_rule', name: ruleName, instruction: ruleInstruction },
+      'AI rule added.'
+    );
+
+    if (result) {
+      setRuleName('');
+      setRuleInstruction('');
     }
   }
 
@@ -88,7 +152,24 @@ export default function HomePage() {
     [data, selected]
   );
 
+  const filteredInbox = useMemo(() => {
+    if (!data?.inbox) return [];
+    if (activeView === 'needs-reply') {
+      return data.inbox.filter((message) => message.status === 'needs_reply');
+    }
+    return data.inbox;
+  }, [data, activeView]);
+
   if (!data) return <main className="loading">Loading Email AI Agent…</main>;
+
+  const nav = [
+    ['overview', 'Overview'],
+    ['inbox', 'Inbox'],
+    ['needs-reply', 'Needs Reply'],
+    ['rules', 'AI Rules'],
+    ['activity', 'Activity'],
+    ['plugin', 'ChatGPT Plugin']
+  ];
 
   return (
     <main className="app-shell">
@@ -101,12 +182,20 @@ export default function HomePage() {
         </div>
 
         <nav>
-          <button className="nav-item active">Overview</button>
-          <button className="nav-item">Inbox <span>{data.stats.inbox}</span></button>
-          <button className="nav-item">Needs Reply <span>{data.stats.needsReply}</span></button>
-          <button className="nav-item">AI Rules</button>
-          <button className="nav-item">Activity</button>
-          <button className="nav-item">ChatGPT Plugin</button>
+          {nav.map(([key, label]) => (
+            <button
+              key={key}
+              className={`nav-item ${activeView === key ? 'active' : ''}`}
+              onClick={() => {
+                setActiveView(key);
+                setDraft(null);
+              }}
+            >
+              {label}
+              {key === 'inbox' && <span>{data.stats.inbox}</span>}
+              {key === 'needs-reply' && <span>{data.stats.needsReply}</span>}
+            </button>
+          ))}
         </nav>
 
         <button className="side-install" onClick={installApp}>
@@ -127,105 +216,282 @@ export default function HomePage() {
         <header className="topbar">
           <div>
             <p className="eyebrow">EMAIL AI WORKSPACE</p>
-            <h1>Your inbox, under control.</h1>
-            <p>Manage everything manually here or control the same backend through ChatGPT.</p>
+            <h1>{viewTitle(activeView)}</h1>
+            <p>{viewSubtitle(activeView)}</p>
           </div>
           <div className="header-actions">
             <button className="install-button" onClick={installApp}>
               <span>↓</span>{installed ? 'Installed' : 'Add to mobile'}
             </button>
-            <button className="primary">Connect Gmail</button>
+            <button className="primary" onClick={connectGmail}>Connect Gmail</button>
           </div>
         </header>
 
-        <section className="gold-banner">
-          <div className="gold-icon">✦</div>
-          <div>
-            <strong>One control center. Two ways to work.</strong>
-            <span>Use this dashboard yourself, or ask ChatGPT to operate the exact same email agent.</span>
-          </div>
-          <span className="gold-badge">MCP READY</span>
-        </section>
+        {activeView === 'overview' && (
+          <>
+            <section className="gold-banner">
+              <div className="gold-icon">✦</div>
+              <div>
+                <strong>One control center. Two ways to work.</strong>
+                <span>Use this dashboard yourself, or ask ChatGPT to operate the same email agent.</span>
+              </div>
+              <span className="gold-badge">MCP READY</span>
+            </section>
 
-        <section className="stats-grid">
-          <Stat title="Inbox" value={data.stats.inbox} caption="Demo messages" />
-          <Stat title="Needs reply" value={data.stats.needsReply} caption="Action required" />
-          <Stat title="Waiting" value={data.stats.waiting} caption="Awaiting response" />
-          <Stat title="Auto replied" value={data.stats.autoReplied} caption="Last 24 hours" />
-        </section>
+            <section className="stats-grid">
+              <Stat title="Inbox" value={data.stats.inbox} caption="Messages available" />
+              <Stat title="Needs reply" value={data.stats.needsReply} caption="Action required" />
+              <Stat title="Waiting" value={data.stats.waiting} caption="Awaiting response" />
+              <Stat title="Auto replied" value={data.stats.autoReplied} caption="Last 24 hours" />
+            </section>
 
-        <section className="control-grid">
-          <div className="panel control-panel">
-            <div className="panel-title">
-              <div><p className="eyebrow">AGENT CONTROL</p><h2>Automation</h2></div>
-              <span className="pill">Development</span>
+            <section className="control-grid">
+              <div className="panel control-panel">
+                <div className="panel-title">
+                  <div><p className="eyebrow">AGENT CONTROL</p><h2>Automation</h2></div>
+                  <span className="pill">Development</span>
+                </div>
+
+                <Toggle
+                  label="Auto reply"
+                  description="Allow eligible replies to be handled automatically."
+                  checked={data.status.autoReply}
+                  disabled={busy}
+                  onChange={(enabled) => action({ action: 'set_auto_reply', enabled }, `Auto reply ${enabled ? 'enabled' : 'disabled'}.`)}
+                />
+
+                <Toggle
+                  label="Require approval"
+                  description="Block sending until you approve the final reply."
+                  checked={data.status.approvalRequired}
+                  disabled={busy}
+                  onChange={(enabled) => action({ action: 'set_approval_required', enabled }, `Approval requirement ${enabled ? 'enabled' : 'disabled'}.`)}
+                />
+
+                <div className="connection-row">
+                  <div>
+                    <span className={data.status.gmailConnected ? 'dot online' : 'dot warn'} />
+                    <b>Gmail</b>
+                    <small>{data.status.gmailConnected ? 'Connected' : data.status.gmailOAuthConfigured ? 'Ready to authorize' : 'OAuth setup required'}</small>
+                  </div>
+                  <button className="small-button" onClick={connectGmail}>
+                    {data.status.gmailConnected ? 'Connected' : 'Connect'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="panel mcp-panel">
+                <div className="mcp-orb">AI</div>
+                <p className="eyebrow">CHATGPT CONTROL</p>
+                <h2>MCP endpoint ready</h2>
+                <p>ChatGPT can use the same inbox, rules and actions as this dashboard.</p>
+                <code>{MCP_PATH}</code>
+                <div className="plugin-actions">
+                  <button className="gold-button" onClick={() => setActiveView('plugin')}>Setup plugin</button>
+                  <button className="dark-ghost" onClick={copyMcpUrl}>Copy URL</button>
+                </div>
+              </div>
+            </section>
+
+            <InboxWorkspace
+              data={data}
+              messages={data.inbox}
+              selected={selected}
+              setSelected={setSelected}
+              selectedMessage={selectedMessage}
+              draft={draft}
+              busy={busy}
+              refresh={refresh}
+              action={action}
+            />
+          </>
+        )}
+
+        {(activeView === 'inbox' || activeView === 'needs-reply') && (
+          <InboxWorkspace
+            data={data}
+            messages={filteredInbox}
+            selected={selected}
+            setSelected={setSelected}
+            selectedMessage={selectedMessage}
+            draft={draft}
+            busy={busy}
+            refresh={refresh}
+            action={action}
+            fullWidth
+          />
+        )}
+
+        {activeView === 'rules' && (
+          <section className="rules-layout">
+            <form className="panel rule-form" onSubmit={addRule}>
+              <p className="eyebrow">NEW RULE</p>
+              <h2>Add AI instruction</h2>
+              <label>
+                Rule name
+                <input value={ruleName} onChange={(event) => setRuleName(event.target.value)} placeholder="e.g. VIP clients" />
+              </label>
+              <label>
+                Instruction
+                <textarea value={ruleInstruction} onChange={(event) => setRuleInstruction(event.target.value)} placeholder="Tell the agent exactly how to behave." rows={5} />
+              </label>
+              <button className="primary full" disabled={busy}>Add rule</button>
+            </form>
+
+            <div className="panel rules-panel">
+              <div className="panel-title"><div><p className="eyebrow">ACTIVE RULES</p><h2>Agent brain</h2></div><span className="pill">{data.rules?.length || 0} rules</span></div>
+              <div className="rules-list">
+                {(data.rules || []).map((rule) => (
+                  <div className="rule-row" key={rule.id}>
+                    <div>
+                      <b>{rule.name}</b>
+                      <p>{rule.instruction}</p>
+                    </div>
+                    <div className="rule-actions">
+                      <button
+                        className={`mini-toggle ${rule.enabled ? 'enabled' : ''}`}
+                        onClick={() => action({ action: 'toggle_rule', ruleId: rule.id, enabled: !rule.enabled }, `Rule ${rule.enabled ? 'disabled' : 'enabled'}.`)}
+                      >
+                        {rule.enabled ? 'ON' : 'OFF'}
+                      </button>
+                      <button className="danger-link" onClick={() => action({ action: 'delete_rule', ruleId: rule.id }, 'Rule deleted.')}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <Toggle label="Auto reply" description="Allow eligible replies to be handled automatically." checked={data.status.autoReply} disabled={busy} onChange={(enabled) => action({ action: 'set_auto_reply', enabled })} />
-            <Toggle label="Require approval" description="Block sending until you approve the final reply." checked={data.status.approvalRequired} disabled={busy} onChange={(enabled) => action({ action: 'set_approval_required', enabled })} />
-            <div className="connection-row">
-              <div><span className="dot warn" /><b>Gmail</b><small>OAuth connection required</small></div>
-              <button className="small-button">Connect</button>
-            </div>
-          </div>
+          </section>
+        )}
 
-          <div className="panel mcp-panel">
-            <div className="mcp-orb">AI</div>
-            <p className="eyebrow">CHATGPT CONTROL</p>
-            <h2>MCP endpoint ready</h2>
-            <p>ChatGPT can use the same inbox, rules and actions as this dashboard.</p>
-            <code>/mcp</code>
-            <div className="tool-tags"><span>list_inbox</span><span>draft_reply</span><span>send_reply</span><span>set_auto_reply</span></div>
-          </div>
-        </section>
-
-        <section className="workspace-grid">
-          <div className="panel inbox-panel">
+        {activeView === 'activity' && (
+          <section className="panel activity-panel">
             <div className="panel-title">
-              <div><p className="eyebrow">INBOX</p><h2>Recent conversations</h2></div>
+              <div><p className="eyebrow">AUDIT LOG</p><h2>Recent activity</h2></div>
               <button className="secondary small-button" onClick={refresh}>Refresh</button>
             </div>
-            <div className="message-list">
-              {data.inbox.map((message) => (
-                <button key={message.id} className={`message-row ${selected === message.id ? 'selected' : ''}`} onClick={() => { setSelected(message.id); setDraft(null); }}>
-                  <span className={`priority ${message.priority}`} />
-                  <span className="message-copy">
-                    <b>{message.name}</b>
-                    <strong>{message.subject}</strong>
-                    <small>{message.preview}</small>
-                  </span>
-                  <span className="message-meta"><small>{message.receivedAt}</small><em>{message.status.replace('_', ' ')}</em></span>
-                </button>
+            <div className="activity-list">
+              {(data.activity || []).map((item) => (
+                <div className="activity-row" key={item.id}>
+                  <span className="activity-dot" />
+                  <div><b>{item.text}</b><small>{item.actor || 'system'} · {item.time}</small></div>
+                </div>
               ))}
             </div>
-          </div>
+          </section>
+        )}
 
-          <div className="panel detail-panel">
-            {!selectedMessage ? (
-              <div className="empty-state">
-                <div className="empty-icon">✦</div>
-                <h3>Select an email</h3>
-                <p>Open a conversation to prepare an AI-assisted reply.</p>
+        {activeView === 'plugin' && (
+          <section className="plugin-layout">
+            <div className="panel plugin-card">
+              <div className="plugin-hero-icon">AI</div>
+              <p className="eyebrow">CHATGPT PLUGIN</p>
+              <h2>Connect Email AI Agent to ChatGPT</h2>
+              <p className="plugin-copy">Your MCP server is live. Add this endpoint in ChatGPT developer mode to control the same backend from chat.</p>
+              <div className="endpoint-box">
+                <code>{typeof window !== 'undefined' ? `${window.location.origin}${MCP_PATH}` : MCP_PATH}</code>
+                <button onClick={copyMcpUrl}>Copy</button>
               </div>
+              <div className="plugin-actions-row">
+                <button className="primary" onClick={copyMcpUrl}>Copy MCP URL</button>
+                <a className="secondary link-button" href="https://chatgpt.com/" target="_blank" rel="noreferrer">Open ChatGPT</a>
+              </div>
+            </div>
+
+            <div className="panel steps-card">
+              <p className="eyebrow">SETUP</p>
+              <h2>3 quick steps</h2>
+              <ol>
+                <li><span>1</span><div><b>Enable Developer mode</b><p>ChatGPT Settings → Security and login → Developer mode.</p></div></li>
+                <li><span>2</span><div><b>Add a plugin</b><p>Open Plugins, tap +, and create a developer-mode connection.</p></div></li>
+                <li><span>3</span><div><b>Paste the MCP URL</b><p>Use the copied URL ending in <code>/mcp</code>.</p></div></li>
+              </ol>
+              <div className="status-strip"><span className="dot online" /> MCP endpoint is live</div>
+            </div>
+          </section>
+        )}
+      </section>
+
+      {showGmailModal && (
+        <div className="modal-backdrop" onMouseDown={() => setShowGmailModal(false)}>
+          <div className="modal-card" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowGmailModal(false)}>×</button>
+            <div className="modal-icon">G</div>
+            <p className="eyebrow">GMAIL CONNECTION</p>
+            <h2>{data.status.gmailOAuthConfigured ? 'Authorize Gmail' : 'Google OAuth setup required'}</h2>
+            {data.status.gmailOAuthConfigured ? (
+              <>
+                <p>The server has Google OAuth credentials and is ready for authorization.</p>
+                <button className="primary full" onClick={() => { setShowGmailModal(false); notify('Gmail authorization route will be enabled with persistent token storage.'); }}>Continue</button>
+              </>
             ) : (
               <>
-                <p className="eyebrow">SELECTED EMAIL</p>
-                <h2>{selectedMessage.subject}</h2>
-                <p className="from">From {selectedMessage.name} · {selectedMessage.from}</p>
-                <div className="email-body">{selectedMessage.preview}</div>
-                <button className="primary full" disabled={busy} onClick={() => action({ action: 'draft_reply', messageId: selectedMessage.id, instruction: 'Write a professional concise reply.' })}>Generate draft</button>
-                {draft && (
-                  <div className="draft-box">
-                    <span>Draft preview</span>
-                    <pre>{draft.body}</pre>
-                    <button className="secondary full" disabled>Send disabled until Gmail is connected</button>
-                  </div>
-                )}
+                <p>This is not a dead button anymore. The app is telling you the exact blocker: Google has not issued OAuth credentials to this Vercel project yet.</p>
+                <div className="setup-list">
+                  <span>1. Google OAuth client ID</span>
+                  <span>2. Google OAuth client secret</span>
+                  <span>3. Gmail API consent + redirect URI</span>
+                </div>
+                <button className="primary full" onClick={() => { setShowGmailModal(false); setActiveView('plugin'); notify('Dashboard controls are live; Gmail authorization is the remaining external setup.'); }}>Got it</button>
               </>
             )}
           </div>
-        </section>
-      </section>
+        </div>
+      )}
+
+      {toast && <div className="toast">{toast}</div>}
     </main>
+  );
+}
+
+function InboxWorkspace({ messages, selected, setSelected, selectedMessage, draft, busy, refresh, action, fullWidth = false }) {
+  return (
+    <section className={`workspace-grid ${fullWidth ? 'workspace-full' : ''}`}>
+      <div className="panel inbox-panel">
+        <div className="panel-title">
+          <div><p className="eyebrow">INBOX</p><h2>Recent conversations</h2></div>
+          <button className="secondary small-button" onClick={refresh}>Refresh</button>
+        </div>
+        <div className="message-list">
+          {messages.length === 0 && <div className="list-empty">No messages in this view.</div>}
+          {messages.map((message) => (
+            <button key={message.id} className={`message-row ${selected === message.id ? 'selected' : ''}`} onClick={() => setSelected(message.id)}>
+              <span className={`priority ${message.priority}`} />
+              <span className="message-copy">
+                <b>{message.name}</b>
+                <strong>{message.subject}</strong>
+                <small>{message.preview}</small>
+              </span>
+              <span className="message-meta"><small>{message.receivedAt}</small><em>{message.status.replace('_', ' ')}</em></span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel detail-panel">
+        {!selectedMessage ? (
+          <div className="empty-state">
+            <div className="empty-icon">✦</div>
+            <h3>Select an email</h3>
+            <p>Open a conversation to prepare an AI-assisted reply.</p>
+          </div>
+        ) : (
+          <>
+            <p className="eyebrow">SELECTED EMAIL</p>
+            <h2>{selectedMessage.subject}</h2>
+            <p className="from">From {selectedMessage.name} · {selectedMessage.from}</p>
+            <div className="email-body">{selectedMessage.preview}</div>
+            <button className="primary full" disabled={busy} onClick={() => action({ action: 'draft_reply', messageId: selectedMessage.id, instruction: 'Write a professional concise reply.' }, 'Draft generated.')}>Generate draft</button>
+            {draft && (
+              <div className="draft-box">
+                <span>Draft preview</span>
+                <pre>{draft.body}</pre>
+                <button className="secondary full" disabled>Connect Gmail to send</button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -240,4 +506,26 @@ function Toggle({ label, description, checked, disabled, onChange }) {
       <button disabled={disabled} aria-pressed={checked} className={`switch ${checked ? 'on' : ''}`} onClick={() => onChange(!checked)}><span /></button>
     </div>
   );
+}
+
+function viewTitle(view) {
+  return {
+    overview: 'Your inbox, under control.',
+    inbox: 'Inbox',
+    'needs-reply': 'Needs reply',
+    rules: 'AI rules',
+    activity: 'Activity',
+    plugin: 'ChatGPT plugin'
+  }[view] || 'Email AI Agent';
+}
+
+function viewSubtitle(view) {
+  return {
+    overview: 'Manage everything manually here or control the same backend through ChatGPT.',
+    inbox: 'Read messages, select conversations and generate reply drafts.',
+    'needs-reply': 'Focus only on conversations that need your response.',
+    rules: 'Tell the agent how it should behave for different emails.',
+    activity: 'See what the dashboard, agent and ChatGPT control layer have changed.',
+    plugin: 'Connect this deployed MCP server to ChatGPT developer mode.'
+  }[view] || '';
 }
