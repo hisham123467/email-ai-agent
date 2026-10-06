@@ -14,6 +14,7 @@ export default function HomePage() {
   const [installed, setInstalled] = useState(false);
   const [toast, setToast] = useState('');
   const [showGmailModal, setShowGmailModal] = useState(false);
+  const [gmailAddress, setGmailAddress] = useState('');
   const [ruleName, setRuleName] = useState('');
   const [ruleInstruction, setRuleInstruction] = useState('');
 
@@ -25,6 +26,24 @@ export default function HomePage() {
 
   useEffect(() => {
     refresh();
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('gmail') === 'connected') {
+      window.setTimeout(() => notify('Gmail connected successfully.'), 350);
+      window.history.replaceState({}, '', '/');
+    } else if (params.get('gmail') === 'error' || params.get('gmail') === 'invalid_state') {
+      window.setTimeout(() => notify('Google connection failed. Please try again.'), 350);
+      window.history.replaceState({}, '', '/');
+    } else if (params.get('gmail') === 'denied') {
+      window.setTimeout(() => notify('Google permission was not approved.'), 350);
+      window.history.replaceState({}, '', '/');
+    } else if (params.get('gmail_setup') === 'required') {
+      window.setTimeout(() => {
+        setShowGmailModal(true);
+        notify('Google app credentials still need to be added once.');
+      }, 350);
+      window.history.replaceState({}, '', '/');
+    }
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -122,11 +141,25 @@ export default function HomePage() {
   }
 
   async function connectGmail() {
-    if (data?.status?.gmailConnected) {
-      notify('Gmail is already connected.');
+    setGmailAddress(data?.status?.gmailEmail || '');
+    setShowGmailModal(true);
+  }
+
+  function continueGmailConnect() {
+    const email = gmailAddress.trim();
+    if (!email || !email.includes('@')) {
+      notify('Apna Gmail address enter karo.');
       return;
     }
-    setShowGmailModal(true);
+    window.location.href = `/api/agent?gmail=connect&login_hint=${encodeURIComponent(email)}`;
+  }
+
+  async function disconnectGmail() {
+    const result = await action({ action: 'disconnect_gmail' }, 'Gmail disconnected.');
+    if (result) {
+      setShowGmailModal(false);
+      setGmailAddress('');
+    }
   }
 
   async function addRule(event) {
@@ -223,7 +256,7 @@ export default function HomePage() {
             <button className="install-button" onClick={installApp}>
               <span>↓</span>{installed ? 'Installed' : 'Add to mobile'}
             </button>
-            <button className="primary" onClick={connectGmail}>Connect Gmail</button>
+            <button className="primary" onClick={connectGmail}>{data.status.gmailConnected ? 'Gmail Connected' : 'Connect Gmail'}</button>
           </div>
         </header>
 
@@ -417,21 +450,37 @@ export default function HomePage() {
             <button className="modal-close" onClick={() => setShowGmailModal(false)}>×</button>
             <div className="modal-icon">G</div>
             <p className="eyebrow">GMAIL CONNECTION</p>
-            <h2>{data.status.gmailOAuthConfigured ? 'Authorize Gmail' : 'Google OAuth setup required'}</h2>
-            {data.status.gmailOAuthConfigured ? (
+
+            {data.status.gmailConnected ? (
               <>
-                <p>The server has Google OAuth credentials and is ready for authorization.</p>
-                <button className="primary full" onClick={() => { setShowGmailModal(false); notify('Gmail authorization route will be enabled with persistent token storage.'); }}>Continue</button>
+                <h2>Gmail connected</h2>
+                <p>Your account is connected through Google OAuth.</p>
+                <div className="connected-account">
+                  <span className="dot online" />
+                  <div><b>{data.status.gmailEmail || 'Google account'}</b><small>Inbox access active</small></div>
+                </div>
+                <button className="secondary full" disabled={busy} onClick={disconnectGmail}>Disconnect Gmail</button>
               </>
             ) : (
               <>
-                <p>This is not a dead button anymore. The app is telling you the exact blocker: Google has not issued OAuth credentials to this Vercel project yet.</p>
-                <div className="setup-list">
-                  <span>1. Google OAuth client ID</span>
-                  <span>2. Google OAuth client secret</span>
-                  <span>3. Gmail API consent + redirect URI</span>
-                </div>
-                <button className="primary full" onClick={() => { setShowGmailModal(false); setActiveView('plugin'); notify('Dashboard controls are live; Gmail authorization is the remaining external setup.'); }}>Got it</button>
+                <h2>Connect your Gmail</h2>
+                <p>Enter your Gmail address. On Next, Google will open its own secure confirmation screen. Your Google password is never entered on this website.</p>
+                <label className="gmail-field">
+                  Gmail address
+                  <input
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    placeholder="name@gmail.com"
+                    value={gmailAddress}
+                    onChange={(event) => setGmailAddress(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') continueGmailConnect();
+                    }}
+                  />
+                </label>
+                <button className="primary full" onClick={continueGmailConnect}>Next with Google</button>
+                <div className="google-security-note">Google will ask you to confirm Gmail access before anything connects.</div>
               </>
             )}
           </div>
