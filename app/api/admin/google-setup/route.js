@@ -32,7 +32,7 @@ export async function POST(request) {
   }
 
   if (response.ok) {
-    return NextResponse.redirect(new URL('/?gmail_setup=complete', request.url));
+    return NextResponse.redirect(new URL('/api/agent?gmail=connect', request.url));
   }
 
   return NextResponse.redirect(
