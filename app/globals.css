@@ -503,3 +503,8 @@ button,a,input,textarea,select{touch-action:manipulation}
   }
   .eyebrow{font-size:10px}
 }
+
+.setup-google-link{
+  display:flex;align-items:center;justify-content:center;
+  text-decoration:none;margin-top:20px;min-height:48px;
+}
