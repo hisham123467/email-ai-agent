@@ -9,37 +9,30 @@ import {
   setAutoReply,
   toggleRule
 } from '../../../lib/agent-service';
-import {
-  buildGoogleAuthUrl,
-  createOAuthState,
-  createTemplateDraft,
-  decryptRefreshToken,
-  encryptRefreshToken,
-  exchangeCode,
-  getGmailMessage,
-  getGoogleProfile,
-  gmailOAuthConfigured,
-  listGmailInbox,
-  refreshGoogleAccessToken,
-  sendGmailReply,
-  verifyOAuthState
-} from '../../../lib/gmail-oauth';
 
 export const dynamic = 'force-dynamic';
 
-async function gmailSession() {
-  if (!gmailOAuthConfigured()) return null;
-  const cookieStore = await cookies();
-  const encryptedRefresh = cookieStore.get('gmail_refresh')?.value;
-  if (!encryptedRefresh) return null;
+const GMAIL_EDGE = 'https://luptphcutecxkxvoijfc.supabase.co/functions/v1/email-ai-gmail';
+const CALLBACK_URL = 'https://email-ai-agent-amber.vercel.app/api/google/oauth';
 
+async function edgeStatus() {
   try {
-    const refreshToken = decryptRefreshToken(encryptedRefresh);
-    const accessToken = await refreshGoogleAccessToken(refreshToken);
-    return {
-      accessToken,
-      email: cookieStore.get('gmail_email')?.value || ''
-    };
+    const response = await fetch(`${GMAIL_EDGE}?action=status`, { cache: 'no-store' });
+    return await response.json();
+  } catch {
+    return { configured: false };
+  }
+}
+
+async function edgeDashboard(session) {
+  if (!session) return null;
+  try {
+    const url = new URL(GMAIL_EDGE);
+    url.searchParams.set('action', 'dashboard');
+    url.searchParams.set('session', session);
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) return null;
+    return await response.json();
   } catch {
     return null;
   }
@@ -57,73 +50,31 @@ function statsForInbox(inbox) {
 export async function GET(request) {
   const url = new URL(request.url);
   const gmailAction = url.searchParams.get('gmail');
-  const code = url.searchParams.get('code');
-  const state = url.searchParams.get('state');
 
   if (gmailAction === 'connect') {
-    if (!gmailOAuthConfigured()) {
-      const home = new URL('/', request.url);
-      home.searchParams.set('gmail_setup', 'required');
-      return NextResponse.redirect(home);
-    }
-
-    const loginHint = url.searchParams.get('login_hint') || '';
-    return NextResponse.redirect(buildGoogleAuthUrl(createOAuthState(), loginHint));
-  }
-
-  if (code) {
-    if (!gmailOAuthConfigured() || !verifyOAuthState(state)) {
-      const home = new URL('/', request.url);
-      home.searchParams.set('gmail', 'error');
-      return NextResponse.redirect(home);
-    }
-
-    try {
-      const tokens = await exchangeCode(code);
-      if (!tokens.refresh_token) throw new Error('Google did not return a refresh token');
-      const profile = await getGoogleProfile(tokens.access_token);
-
-      const response = NextResponse.redirect(new URL('/?gmail=connected', request.url));
-      response.cookies.set('gmail_refresh', encryptRefreshToken(tokens.refresh_token), {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'lax',
-        maxAge: 180 * 24 * 60 * 60,
-        path: '/'
-      });
-      response.cookies.set('gmail_email', profile.email || '', {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'lax',
-        maxAge: 180 * 24 * 60 * 60,
-        path: '/'
-      });
-      return response;
-    } catch {
-      const home = new URL('/', request.url);
-      home.searchParams.set('gmail', 'error');
-      return NextResponse.redirect(home);
-    }
+    const edge = new URL(GMAIL_EDGE);
+    edge.searchParams.set('action', 'start');
+    edge.searchParams.set('return_url', CALLBACK_URL);
+    return NextResponse.redirect(edge);
   }
 
   const dashboard = getDashboard();
-  const session = await gmailSession();
+  const cookieStore = await cookies();
+  const session = cookieStore.get('gmail_session')?.value || '';
+  const [status, gmail] = await Promise.all([
+    edgeStatus(),
+    edgeDashboard(session)
+  ]);
 
-  if (!session) {
-    return Response.json(dashboard, {
-      headers: { 'Cache-Control': 'no-store' }
-    });
-  }
-
-  try {
-    const inbox = await listGmailInbox(session.accessToken, 15);
+  if (gmail?.connected) {
+    const inbox = Array.isArray(gmail.inbox) ? gmail.inbox : [];
     return Response.json({
       ...dashboard,
       status: {
         ...dashboard.status,
         gmailConnected: true,
-        gmailEmail: session.email || null,
-        gmailOAuthConfigured: true,
+        gmailEmail: gmail.email || null,
+        gmailOAuthConfigured: Boolean(status.configured),
         nextStep: 'Gmail connected'
       },
       stats: statsForInbox(inbox),
@@ -131,29 +82,37 @@ export async function GET(request) {
     }, {
       headers: { 'Cache-Control': 'no-store' }
     });
-  } catch {
-    return Response.json({
-      ...dashboard,
-      status: {
-        ...dashboard.status,
-        gmailConnected: false,
-        gmailOAuthConfigured: true,
-        nextStep: 'Reconnect Gmail'
-      }
-    }, {
-      headers: { 'Cache-Control': 'no-store' }
-    });
   }
+
+  return Response.json({
+    ...dashboard,
+    status: {
+      ...dashboard.status,
+      gmailConnected: false,
+      gmailEmail: null,
+      gmailOAuthConfigured: Boolean(status.configured),
+      nextStep: status.configured ? 'Connect Gmail' : 'Seller Google setup required'
+    }
+  }, {
+    headers: { 'Cache-Control': 'no-store' }
+  });
 }
 
 export async function POST(request) {
   try {
     const body = await request.json();
+    const cookieStore = await cookies();
+    const session = cookieStore.get('gmail_session')?.value || '';
 
     if (body.action === 'disconnect_gmail') {
+      if (session) {
+        const url = new URL(GMAIL_EDGE);
+        url.searchParams.set('action', 'disconnect');
+        url.searchParams.set('session', session);
+        await fetch(url, { cache: 'no-store' }).catch(() => {});
+      }
       const response = Response.json({ ok: true });
-      response.headers.append('Set-Cookie', 'gmail_refresh=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
-      response.headers.append('Set-Cookie', 'gmail_email=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
+      response.headers.append('Set-Cookie', 'gmail_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
       return response;
     }
 
@@ -166,10 +125,28 @@ export async function POST(request) {
     }
 
     if (body.action === 'draft_reply') {
-      const session = await gmailSession();
-      if (session) {
-        const message = await getGmailMessage(session.accessToken, body.messageId);
-        return Response.json({ ok: true, draft: createTemplateDraft(message) });
+      if (session && body.messageId) {
+        const url = new URL(GMAIL_EDGE);
+        url.searchParams.set('action', 'message');
+        url.searchParams.set('session', session);
+        url.searchParams.set('message_id', body.messageId);
+        const response = await fetch(url, { cache: 'no-store' });
+        if (response.ok) {
+          const result = await response.json();
+          const message = result.message;
+          return Response.json({
+            ok: true,
+            draft: {
+              id: `draft_${Date.now()}`,
+              messageId: message.id,
+              to: message.from,
+              subject: message.subject?.startsWith('Re:') ? message.subject : `Re: ${message.subject || ''}`,
+              body: `Hi ${message.name || 'there'},\n\nThanks for your message. I have received your update and I am reviewing it. I will follow up with the relevant details shortly.\n\nBest regards,\nHisham`,
+              status: 'draft_only',
+              gmail: true
+            }
+          });
+        }
       }
       return Response.json({ ok: true, draft: createReplyDraft(body) });
     }
@@ -184,7 +161,6 @@ export async function POST(request) {
         }, { status: 409 });
       }
 
-      const session = await gmailSession();
       if (!session) {
         return Response.json({
           ok: false,
@@ -193,8 +169,19 @@ export async function POST(request) {
         }, { status: 401 });
       }
 
-      const sent = await sendGmailReply(session.accessToken, body.messageId, body.body);
-      return Response.json({ ok: true, sent });
+      const response = await fetch(GMAIL_EDGE, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send',
+          session,
+          messageId: body.messageId,
+          body: body.body
+        }),
+        cache: 'no-store'
+      });
+      const result = await response.json();
+      return Response.json(result, { status: response.status });
     }
 
     if (body.action === 'add_rule') {
