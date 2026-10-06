@@ -14,6 +14,23 @@ export const dynamic = 'force-dynamic';
 
 const GMAIL_EDGE = 'https://luptphcutecxkxvoijfc.supabase.co/functions/v1/email-ai-gmail';
 const CALLBACK_URL = 'https://email-ai-agent-amber.vercel.app/api/google/oauth';
+const SUPABASE_REST = 'https://luptphcutecxkxvoijfc.supabase.co/rest/v1/rpc';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_hLYqtM0lFdf9etSrkgOH6A_eyEhS5-w';
+
+async function rpc(name, body) {
+  const response = await fetch(`${SUPABASE_REST}/${name}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(body),
+    cache: 'no-store'
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.message || 'Database action failed');
+  return payload;
+}
 
 async function edgeStatus() {
   try {
@@ -61,24 +78,53 @@ export async function GET(request) {
   const dashboard = getDashboard();
   const cookieStore = await cookies();
   const session = cookieStore.get('gmail_session')?.value || '';
-  const [status, gmail] = await Promise.all([
-    edgeStatus(),
-    edgeDashboard(session)
-  ]);
+  const status = await edgeStatus();
 
-  if (gmail?.connected) {
-    const inbox = Array.isArray(gmail.inbox) ? gmail.inbox : [];
+  let sessionStatus = { connected: false };
+  if (session) {
+    sessionStatus = await rpc('email_ai_session_status', { p_session: session }).catch(() => ({ connected: false }));
+  }
+
+  if (sessionStatus?.connected && sessionStatus.status === 'pending') {
     return Response.json({
       ...dashboard,
       status: {
         ...dashboard.status,
         gmailConnected: true,
-        gmailEmail: gmail.email || null,
+        gmailEmail: sessionStatus.email || null,
         gmailOAuthConfigured: Boolean(status.configured),
-        nextStep: 'Gmail connected'
+        gmailActivationRequired: true,
+        isAdmin: false,
+        nextStep: 'Enter activation code'
+      },
+      stats: { inbox: 0, needsReply: 0, waiting: 0, autoReplied: 0 },
+      inbox: [],
+      pendingApprovals: []
+    }, {
+      headers: { 'Cache-Control': 'no-store' }
+    });
+  }
+
+  if (sessionStatus?.connected && sessionStatus.status === 'active') {
+    const gmail = await edgeDashboard(session);
+    const inbox = Array.isArray(gmail?.inbox) ? gmail.inbox : [];
+
+    return Response.json({
+      ...dashboard,
+      status: {
+        ...dashboard.status,
+        gmailConnected: true,
+        gmailEmail: sessionStatus.email || gmail?.email || null,
+        gmailOAuthConfigured: Boolean(status.configured),
+        gmailActivationRequired: false,
+        isAdmin: Boolean(sessionStatus.isAdmin),
+        nextStep: sessionStatus.isAdmin ? 'Admin connected' : 'Gmail connected'
       },
       stats: statsForInbox(inbox),
-      inbox
+      inbox,
+      pendingApprovals: Array.isArray(sessionStatus.pendingApprovals)
+        ? sessionStatus.pendingApprovals
+        : []
     }, {
       headers: { 'Cache-Control': 'no-store' }
     });
@@ -91,8 +137,11 @@ export async function GET(request) {
       gmailConnected: false,
       gmailEmail: null,
       gmailOAuthConfigured: Boolean(status.configured),
+      gmailActivationRequired: false,
+      isAdmin: false,
       nextStep: status.configured ? 'Connect Gmail' : 'Seller Google setup required'
-    }
+    },
+    pendingApprovals: []
   }, {
     headers: { 'Cache-Control': 'no-store' }
   });
@@ -103,6 +152,19 @@ export async function POST(request) {
     const body = await request.json();
     const cookieStore = await cookies();
     const session = cookieStore.get('gmail_session')?.value || '';
+
+    if (body.action === 'activate_gmail') {
+      if (!session) {
+        return Response.json({ ok: false, error: 'Gmail session not found' }, { status: 401 });
+      }
+
+      const result = await rpc('email_ai_activate_session', {
+        p_session: session,
+        p_code: String(body.code || '')
+      });
+
+      return Response.json(result, { status: result?.ok ? 200 : 400 });
+    }
 
     if (body.action === 'disconnect_gmail') {
       if (session) {
