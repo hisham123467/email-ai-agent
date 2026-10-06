@@ -37,10 +37,7 @@ export default function HomePage() {
       window.setTimeout(() => notify('Google permission was not approved.'), 350);
       window.history.replaceState({}, '', '/');
     } else if (params.get('gmail_setup') === 'required') {
-      window.setTimeout(() => {
-        setShowGmailModal(true);
-        notify('Google app credentials still need to be added once.');
-      }, 350);
+      window.setTimeout(() => notify('One-time seller Google setup is not completed yet.'), 350);
       window.history.replaceState({}, '', '/');
     }
 
@@ -142,6 +139,10 @@ export default function HomePage() {
   async function connectGmail() {
     if (data?.status?.gmailConnected) {
       setShowGmailModal(true);
+      return;
+    }
+    if (!data?.status?.gmailOAuthConfigured) {
+      notify('One-time seller Google setup is not completed yet.');
       return;
     }
     window.location.href = '/api/agent?gmail=connect';
