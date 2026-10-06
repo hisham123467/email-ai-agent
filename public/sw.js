@@ -1,4 +1,4 @@
-const CACHE = 'email-ai-agent-v2';
+const CACHE = 'email-ai-agent-v3';
 const CORE = ['/', '/manifest.webmanifest', '/icon.svg', '/maskable-icon.svg'];
 
 self.addEventListener('install', (event) => {
