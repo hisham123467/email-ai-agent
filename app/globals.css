@@ -442,3 +442,64 @@ button,a,input,textarea,select{touch-action:manipulation}
   .activation-card h2{font-size:24px}
   .activation-card>p:not(.eyebrow){font-size:12.5px;line-height:1.45}
 }
+
+@media(max-width:650px){
+  .admin-setup-shell{
+    min-height:100svh;
+    padding:12px;
+    background:#f5f4ef;
+    place-items:start center;
+    overflow:auto;
+  }
+  .admin-setup-card{
+    min-height:auto;
+    width:min(100%,520px);
+    max-width:520px;
+    border:1px solid var(--border);
+    border-radius:16px;
+    box-shadow:0 14px 42px rgba(0,0,0,.08);
+    padding:18px 16px;
+    margin:4px auto 16px;
+    zoom:.88;
+  }
+  .admin-setup-logo{
+    width:46px;height:46px;border-radius:13px;
+    font-size:19px;margin-bottom:12px;
+  }
+  .admin-setup-card h1{
+    font-size:23px;
+    line-height:1.08;
+    margin:4px 0 7px;
+  }
+  .admin-setup-card>p{
+    font-size:13px;
+    line-height:1.45;
+    margin:0;
+  }
+  .admin-setup-form{
+    gap:10px;
+    margin-top:15px;
+  }
+  .admin-setup-form label{
+    gap:5px;
+    font-size:11.5px;
+  }
+  .admin-setup-form input{
+    min-height:44px;
+    padding:10px 11px;
+    font-size:16px!important;
+    border-radius:10px;
+  }
+  .admin-setup-form .primary{
+    min-height:46px;
+    padding:11px 13px;
+    font-size:15px!important;
+  }
+  .setup-note{
+    margin-top:10px;
+    padding:9px 10px;
+    font-size:10.5px;
+    line-height:1.4;
+  }
+  .eyebrow{font-size:10px}
+}
