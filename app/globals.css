@@ -211,3 +211,10 @@ button:focus-visible{outline:3px solid rgba(198,149,45,.28);outline-offset:2px}
 .connected-account{display:flex;align-items:center;gap:11px;margin:18px 0;padding:13px;border:1px solid #dfe9e2;background:#f7fbf8;border-radius:11px}
 .connected-account>div{display:flex;flex-direction:column;gap:3px}
 .connected-account small{color:var(--muted)}
+
+html,body{touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+button,a,input,textarea,select{touch-action:manipulation}
+@media(max-width:650px){
+  button,input,textarea,select{font-size:16px!important}
+  .modal-card{max-height:calc(100dvh - 24px);overflow:auto}
+}
