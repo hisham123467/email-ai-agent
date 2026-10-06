@@ -16,6 +16,7 @@ export default function HomePage() {
   const [showGmailModal, setShowGmailModal] = useState(false);
   const [ruleName, setRuleName] = useState('');
   const [ruleInstruction, setRuleInstruction] = useState('');
+  const [activationCode, setActivationCode] = useState('');
 
   async function refresh() {
     const response = await fetch('/api/agent', { cache: 'no-store' });
@@ -38,6 +39,9 @@ export default function HomePage() {
       window.history.replaceState({}, '', '/');
     } else if (params.get('gmail_setup') === 'required') {
       window.setTimeout(() => notify('One-time seller Google setup is not completed yet.'), 350);
+      window.history.replaceState({}, '', '/');
+    } else if (params.get('gmail_setup') === 'complete') {
+      window.setTimeout(() => notify('Google seller setup completed. Connect Gmail is ready.'), 350);
       window.history.replaceState({}, '', '/');
     }
 
@@ -153,6 +157,30 @@ export default function HomePage() {
     if (result) setShowGmailModal(false);
   }
 
+  async function activateGmail() {
+    const code = activationCode.trim();
+    if (!/^\d{6}$/.test(code)) {
+      notify('6-digit activation code enter karo.');
+      return;
+    }
+
+    const result = await action(
+      { action: 'activate_gmail', code },
+      'Gmail activated successfully.'
+    );
+
+    if (result?.ok) setActivationCode('');
+  }
+
+  async function copyText(value, message = 'Copied.') {
+    try {
+      await navigator.clipboard.writeText(value);
+      notify(message);
+    } catch {
+      notify(value);
+    }
+  }
+
   async function addRule(event) {
     event.preventDefault();
     if (!ruleName.trim() || !ruleInstruction.trim()) {
@@ -192,6 +220,7 @@ export default function HomePage() {
     ['needs-reply', 'Needs Reply'],
     ['rules', 'AI Rules'],
     ['activity', 'Activity'],
+    ...(data.status.isAdmin ? [['admin', 'Admin']] : []),
     ['plugin', 'ChatGPT Plugin']
   ];
 
@@ -247,7 +276,13 @@ export default function HomePage() {
             <button className="install-button" onClick={installApp}>
               <span>↓</span>{installed ? 'Installed' : 'Add to mobile'}
             </button>
-            <button className="primary" onClick={connectGmail}>{data.status.gmailConnected ? 'Gmail Connected' : 'Connect Gmail'}</button>
+            <button className="primary" onClick={connectGmail}>
+              {data.status.gmailActivationRequired
+                ? 'Activation Required'
+                : data.status.gmailConnected
+                  ? 'Gmail Connected'
+                  : 'Connect Gmail'}
+            </button>
           </div>
         </header>
 
@@ -404,6 +439,41 @@ export default function HomePage() {
           </section>
         )}
 
+        {activeView === 'admin' && data.status.isAdmin && (
+          <section className="panel admin-panel">
+            <div className="panel-title">
+              <div>
+                <p className="eyebrow">ADMIN · PAYMENTS</p>
+                <h2>Pending activations</h2>
+              </div>
+              <span className="pill">{data.pendingApprovals?.length || 0} pending</span>
+            </div>
+
+            <p className="admin-intro">
+              Client ko code sirf payment receive hone ke baad do. Code ek dafa use hote hi expire ho jayega.
+            </p>
+
+            <div className="approval-list">
+              {(data.pendingApprovals || []).length === 0 && (
+                <div className="list-empty">No clients are waiting for activation.</div>
+              )}
+
+              {(data.pendingApprovals || []).map((client) => (
+                <div className="approval-row" key={`${client.email}-${client.createdAt}`}>
+                  <div>
+                    <b>{client.email}</b>
+                    <small>{client.createdAt ? new Date(client.createdAt).toLocaleString() : 'Waiting for payment'}</small>
+                  </div>
+                  <div className="activation-code-chip">
+                    <strong>{client.activationCode}</strong>
+                    <button onClick={() => copyText(client.activationCode, 'Activation code copied.')}>Copy</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {activeView === 'plugin' && (
           <section className="plugin-layout">
             <div className="panel plugin-card">
@@ -444,11 +514,18 @@ export default function HomePage() {
 
             {data.status.gmailConnected ? (
               <>
-                <h2>Gmail connected</h2>
-                <p>Your account is connected through Google OAuth.</p>
+                <h2>{data.status.gmailActivationRequired ? 'Activation required' : 'Gmail connected'}</h2>
+                <p>
+                  {data.status.gmailActivationRequired
+                    ? 'Google connection complete hai. Seller activation code ke baad inbox unlock hoga.'
+                    : 'Your account is connected through Google OAuth.'}
+                </p>
                 <div className="connected-account">
-                  <span className="dot online" />
-                  <div><b>{data.status.gmailEmail || 'Google account'}</b><small>Inbox access active</small></div>
+                  <span className={data.status.gmailActivationRequired ? 'dot warn' : 'dot online'} />
+                  <div>
+                    <b>{data.status.gmailEmail || 'Google account'}</b>
+                    <small>{data.status.gmailActivationRequired ? 'Waiting for activation' : 'Inbox access active'}</small>
+                  </div>
                 </div>
                 <button className="secondary full" disabled={busy} onClick={disconnectGmail}>Disconnect Gmail</button>
               </>
@@ -460,6 +537,38 @@ export default function HomePage() {
                 <div className="google-security-note">One click here → choose Google account → Allow → connected automatically.</div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {data.status.gmailActivationRequired && (
+        <div className="activation-gate">
+          <div className="activation-card">
+            <div className="activation-lock">✓</div>
+            <p className="eyebrow">GOOGLE CONNECTED</p>
+            <h2>Activation required</h2>
+            <p>
+              Gmail permission complete ho gayi hai. Payment ke baad seller se 6-digit activation code lo.
+            </p>
+            <div className="activation-account">{data.status.gmailEmail}</div>
+            <input
+              className="activation-input"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              placeholder="000000"
+              value={activationCode}
+              onChange={(event) => setActivationCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') activateGmail();
+              }}
+            />
+            <button className="primary full" disabled={busy} onClick={activateGmail}>
+              {busy ? 'Checking…' : 'Activate Gmail'}
+            </button>
+            <button className="activation-disconnect" disabled={busy} onClick={disconnectGmail}>
+              Use another Google account
+            </button>
           </div>
         </div>
       )}
@@ -541,6 +650,7 @@ function viewTitle(view) {
     'needs-reply': 'Needs reply',
     rules: 'AI rules',
     activity: 'Activity',
+    admin: 'Admin approvals',
     plugin: 'ChatGPT plugin'
   }[view] || 'Email AI Agent';
 }
@@ -552,6 +662,7 @@ function viewSubtitle(view) {
     'needs-reply': 'Focus only on conversations that need your response.',
     rules: 'Tell the agent how it should behave for different emails.',
     activity: 'See what the dashboard, agent and ChatGPT control layer have changed.',
+    admin: 'Approve paid clients by sharing their one-time activation code.',
     plugin: 'Connect this deployed MCP server to ChatGPT developer mode.'
   }[view] || '';
 }
