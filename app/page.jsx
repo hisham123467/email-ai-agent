@@ -14,7 +14,6 @@ export default function HomePage() {
   const [installed, setInstalled] = useState(false);
   const [toast, setToast] = useState('');
   const [showGmailModal, setShowGmailModal] = useState(false);
-  const [gmailAddress, setGmailAddress] = useState('');
   const [ruleName, setRuleName] = useState('');
   const [ruleInstruction, setRuleInstruction] = useState('');
 
@@ -141,25 +140,16 @@ export default function HomePage() {
   }
 
   async function connectGmail() {
-    setGmailAddress(data?.status?.gmailEmail || '');
-    setShowGmailModal(true);
-  }
-
-  function continueGmailConnect() {
-    const email = gmailAddress.trim();
-    if (!email || !email.includes('@')) {
-      notify('Apna Gmail address enter karo.');
+    if (data?.status?.gmailConnected) {
+      setShowGmailModal(true);
       return;
     }
-    window.location.href = `/api/agent?gmail=connect&login_hint=${encodeURIComponent(email)}`;
+    window.location.href = '/api/agent?gmail=connect';
   }
 
   async function disconnectGmail() {
     const result = await action({ action: 'disconnect_gmail' }, 'Gmail disconnected.');
-    if (result) {
-      setShowGmailModal(false);
-      setGmailAddress('');
-    }
+    if (result) setShowGmailModal(false);
   }
 
   async function addRule(event) {
@@ -463,24 +453,10 @@ export default function HomePage() {
               </>
             ) : (
               <>
-                <h2>Connect your Gmail</h2>
-                <p>Enter your Gmail address. On Next, Google will open its own secure confirmation screen. Your Google password is never entered on this website.</p>
-                <label className="gmail-field">
-                  Gmail address
-                  <input
-                    type="email"
-                    inputMode="email"
-                    autoComplete="email"
-                    placeholder="name@gmail.com"
-                    value={gmailAddress}
-                    onChange={(event) => setGmailAddress(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') continueGmailConnect();
-                    }}
-                  />
-                </label>
-                <button className="primary full" onClick={continueGmailConnect}>Next with Google</button>
-                <div className="google-security-note">Google will ask you to confirm Gmail access before anything connects.</div>
+                <h2>Connect Gmail</h2>
+                <p>Google will open its own secure account chooser and permission screen. Your password is never entered on this website.</p>
+                <button className="primary full" onClick={() => { window.location.href = '/api/agent?gmail=connect'; }}>Continue with Google</button>
+                <div className="google-security-note">One click here → choose Google account → Allow → connected automatically.</div>
               </>
             )}
           </div>
