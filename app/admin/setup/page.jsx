@@ -14,7 +14,8 @@ export default async function AdminSetupPage({ searchParams }) {
         <p className="eyebrow">ONE-TIME SELLER SETUP</p>
         <h1>Enable Google Gmail connection</h1>
         <p>
-          Ye setup sirf ek dafa seller/admin ke liye hai. Iske baad har client ko sirf
+          Ye setup sirf ek dafa seller/admin ke liye hai. Save ke baad Google khulega,
+          tum apna admin Gmail select karke Allow karoge. Uske baad future clients ko sirf
           Connect Gmail → Google Allow karna hoga.
         </p>
 
@@ -58,7 +59,7 @@ export default async function AdminSetupPage({ searchParams }) {
           </label>
 
           <button className="primary full" type="submit">
-            Save & Enable Gmail
+            Save & Continue with Google
           </button>
         </form>
 
