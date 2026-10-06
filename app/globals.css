@@ -218,3 +218,109 @@ button,a,input,textarea,select{touch-action:manipulation}
   button,input,textarea,select{font-size:16px!important}
   .modal-card{max-height:calc(100dvh - 24px);overflow:auto}
 }
+
+.activation-gate{
+  position:fixed;inset:0;z-index:120;background:#f5f4ef;
+  display:grid;place-items:center;padding:18px;overflow:auto
+}
+.activation-card{
+  width:min(440px,100%);background:#fff;border:1px solid var(--border);
+  border-radius:20px;padding:26px;box-shadow:0 24px 80px rgba(0,0,0,.13);
+  text-align:center
+}
+.activation-card h2{font-size:28px;margin:7px 0 9px}
+.activation-card>p:not(.eyebrow){color:var(--muted);line-height:1.55;margin:0 auto 16px}
+.activation-lock{
+  width:58px;height:58px;border-radius:18px;background:var(--black);color:var(--gold);
+  display:grid;place-items:center;font-size:24px;font-weight:900;margin:0 auto 18px
+}
+.activation-account{
+  background:#f8f6ef;border:1px solid #e4dcc8;border-radius:11px;
+  padding:11px 12px;margin:16px 0 12px;font-size:13px;font-weight:750;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+.activation-input{
+  width:100%;box-sizing:border-box;text-align:center;letter-spacing:9px;
+  font-size:24px!important;font-weight:900;padding:14px 12px;margin-bottom:10px;
+  border:1px solid var(--border);border-radius:12px;background:#fbfaf7;color:var(--text)
+}
+.activation-input:focus{outline:2px solid rgba(198,149,45,.2);border-color:#cba854}
+.activation-disconnect{
+  border:0;background:transparent;color:var(--muted);font-weight:700;
+  padding:12px;margin-top:3px;cursor:pointer
+}
+.admin-panel{max-width:980px}
+.admin-intro{color:var(--muted);line-height:1.55;margin:4px 0 18px}
+.approval-list{border-top:1px solid var(--border)}
+.approval-row{
+  display:flex;align-items:center;justify-content:space-between;gap:15px;
+  padding:16px 0;border-bottom:1px solid var(--border)
+}
+.approval-row>div:first-child{display:flex;flex-direction:column;gap:4px;min-width:0}
+.approval-row b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.approval-row small{color:var(--muted)}
+.activation-code-chip{
+  flex:none;display:flex;align-items:center;gap:8px;background:#11110f;color:#fff;
+  border-radius:11px;padding:7px 8px 7px 12px
+}
+.activation-code-chip strong{font-size:16px;letter-spacing:2px;color:#efd991}
+.activation-code-chip button{
+  border:1px solid #494538;background:#2a2821;color:#fff;border-radius:8px;
+  padding:7px 9px;font-weight:800;cursor:pointer
+}
+
+.admin-setup-shell{
+  min-height:100dvh;background:#f5f4ef;display:grid;place-items:center;
+  padding:18px;box-sizing:border-box
+}
+.admin-setup-card{
+  width:min(520px,100%);background:#fff;border:1px solid var(--border);
+  border-radius:20px;padding:26px;box-shadow:0 24px 80px rgba(0,0,0,.11)
+}
+.admin-setup-logo{
+  width:54px;height:54px;border-radius:16px;background:#11110f;color:#d2a43a;
+  display:grid;place-items:center;font-weight:900;font-size:22px;margin-bottom:18px
+}
+.admin-setup-card h1{margin:6px 0 8px;font-size:28px}
+.admin-setup-card>p{color:var(--muted);line-height:1.55}
+.admin-setup-form{display:grid;gap:14px;margin-top:22px}
+.admin-setup-form label{display:grid;gap:7px;font-size:12px;font-weight:800;color:#4d493f}
+.admin-setup-form input{
+  width:100%;box-sizing:border-box;border:1px solid var(--border);
+  border-radius:11px;background:#fbfaf7;padding:13px 14px;font-size:16px!important
+}
+.admin-setup-form input:focus{outline:2px solid rgba(198,149,45,.18);border-color:#cba854}
+.setup-readonly{color:#6d675b;background:#f1efe9!important}
+.setup-error{
+  background:#fff3f3;border:1px solid #efcaca;color:#9e3636;
+  padding:10px 12px;border-radius:10px;font-size:12px;margin-top:12px
+}
+.setup-note{
+  margin-top:14px;padding:11px 12px;border-radius:10px;background:#faf7ee;
+  border:1px solid #ead9ae;color:#75623d;font-size:11px;line-height:1.5
+}
+
+@media(max-width:650px){
+  html,body{width:100%;max-width:100%;overflow-x:hidden}
+  .content{width:100%;min-width:0}
+  .topbar{align-items:flex-start}
+  .activation-gate{padding:0;background:#fff;place-items:stretch}
+  .activation-card{
+    min-height:100dvh;width:100%;max-width:none;border:0;border-radius:0;
+    box-shadow:none;padding:28px 20px;display:flex;flex-direction:column;
+    justify-content:center;box-sizing:border-box
+  }
+  .activation-card h2{font-size:26px}
+  .approval-row{align-items:flex-start;flex-direction:column}
+  .activation-code-chip{width:100%;box-sizing:border-box;justify-content:space-between}
+  .admin-setup-shell{padding:0;background:#fff;place-items:stretch}
+  .admin-setup-card{
+    min-height:100dvh;width:100%;max-width:none;border:0;border-radius:0;
+    box-shadow:none;padding:28px 20px;box-sizing:border-box
+  }
+  .modal-backdrop{padding:0;align-items:stretch}
+  .modal-card{
+    width:100%;max-width:none;min-height:100dvh;border-radius:0;border:0;
+    padding:24px 20px;display:flex;flex-direction:column;justify-content:center
+  }
+}
