@@ -541,6 +541,26 @@ export default function HomePage() {
         </div>
       )}
 
+      {!data.status.gmailConnected && data.status.gmailOAuthConfigured && (
+        <div className="connect-gate">
+          <div className="connect-gate-card">
+            <div className="google-connect-icon">G</div>
+            <p className="eyebrow">EMAIL AI AGENT</p>
+            <h2>Connect your Gmail</h2>
+            <p>
+              Google ka official account chooser khulega. Apni Gmail select karo,
+              permissions Allow karo, aur connection automatically complete ho jayega.
+            </p>
+            <button className="google-connect-button" onClick={connectGmail}>
+              Continue with Google
+            </button>
+            <div className="connect-privacy">
+              Password is website par kabhi enter nahi hota.
+            </div>
+          </div>
+        </div>
+      )}
+
       {data.status.gmailActivationRequired && (
         <div className="activation-gate">
           <div className="activation-card">
