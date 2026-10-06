@@ -324,3 +324,39 @@ button,a,input,textarea,select{touch-action:manipulation}
     padding:24px 20px;display:flex;flex-direction:column;justify-content:center
   }
 }
+
+.connect-gate{
+  position:fixed;inset:0;z-index:110;background:#f5f4ef;
+  display:grid;place-items:center;padding:20px;overflow:auto;
+}
+.connect-gate-card{
+  width:min(460px,100%);background:#fff;border:1px solid var(--border);
+  border-radius:22px;padding:30px;box-shadow:0 28px 90px rgba(0,0,0,.12);
+  text-align:center;box-sizing:border-box;
+}
+.google-connect-icon{
+  width:64px;height:64px;border-radius:19px;background:#11110f;color:#d2a43a;
+  display:grid;place-items:center;margin:0 auto 20px;font-size:25px;font-weight:900;
+}
+.connect-gate-card h2{font-size:30px;line-height:1.08;margin:7px 0 12px}
+.connect-gate-card>p:not(.eyebrow){color:var(--muted);line-height:1.6;margin:0 auto 22px}
+.google-connect-button{
+  width:100%;border:0;border-radius:12px;background:#11110f;color:#fff;
+  padding:15px 16px;font-size:16px!important;font-weight:850;cursor:pointer;
+  touch-action:manipulation;
+}
+.connect-privacy{
+  margin-top:13px;padding:10px 12px;border:1px solid #e7dfc9;background:#fbf8ef;
+  border-radius:10px;color:#74664a;font-size:11px;line-height:1.45;
+}
+
+@media(max-width:650px){
+  .connect-gate{padding:0;background:#fff;place-items:stretch}
+  .connect-gate-card{
+    width:100%;max-width:none;min-height:100dvh;border:0;border-radius:0;box-shadow:none;
+    padding:30px 22px;display:flex;flex-direction:column;justify-content:center;
+  }
+  .google-connect-icon{width:66px;height:66px}
+  .connect-gate-card h2{font-size:29px}
+  .connect-gate-card>p:not(.eyebrow){max-width:360px}
+}
