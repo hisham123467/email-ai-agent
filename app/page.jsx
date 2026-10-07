@@ -273,10 +273,12 @@ export default function HomePage() {
             <p>{viewSubtitle(activeView)}</p>
           </div>
           <div className="header-actions">
-            <button className="install-button" onClick={installApp}>
-              <span>↓</span>{installed ? 'Installed' : 'Add to mobile'}
-            </button>
-            <button className="primary" onClick={connectGmail}>
+            {!installed && (
+              <button className="install-button" onClick={installApp}>
+                <span>↓</span>Add to mobile
+              </button>
+            )}
+            <button className="primary gmail-header-button" onClick={connectGmail}>
               {data.status.gmailActivationRequired
                 ? 'Activation Required'
                 : data.status.gmailConnected
