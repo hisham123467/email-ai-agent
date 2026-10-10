@@ -218,6 +218,7 @@ export default function HomePage() {
     ['overview', 'Overview'],
     ['inbox', 'Inbox'],
     ['needs-reply', 'Needs Reply'],
+    ['replies', 'Replies'],
     ['rules', 'AI Rules'],
     ['activity', 'Activity'],
     ...(data.status.isAdmin ? [['admin', 'Admin']] : []),
@@ -240,6 +241,10 @@ export default function HomePage() {
               key={key}
               className={`nav-item ${activeView === key ? 'active' : ''}`}
               onClick={() => {
+                if (key === 'replies') {
+                  window.location.href = '/replies';
+                  return;
+                }
                 setActiveView(key);
                 setDraft(null);
               }}
