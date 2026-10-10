@@ -74,6 +74,29 @@ function answerQuestion(q) {
   return "I’ve noted your question and I’ll confirm the correct details for you.";
 }
 
+function detectReplyIntents(body='') {
+  const text = String(body || '').toLowerCase();
+  const intents = [];
+
+  if (/\b(problem|issue|error|not working|failed|fails|broken|bug|overlap|overlaps)\b/i.test(text)) {
+    intents.push('issue');
+  }
+  if (/\b(call|meeting|meet|schedule|available|availability)\b/i.test(text)) {
+    intents.push('call');
+  }
+  if (/\b(next steps?|before launch|launch plan|what happens next|proceed)\b/i.test(text)) {
+    intents.push('next_steps');
+  }
+  if (/\b(send|share|provide)\b/i.test(text) && /\b(demo|file|document|link|details?|information|access)\b/i.test(text)) {
+    intents.push('send');
+  }
+  if (/\b(status|update|progress|ready|done|completed)\b/i.test(text)) {
+    intents.push('status');
+  }
+
+  return [...new Set(intents)];
+}
+
 function generateReply({ senderName, subject, context, matches }) {
   const body = lastIncoming(context);
   const bodyLower = body.toLowerCase().replace(/[.!?]+$/g,'').trim();
@@ -93,9 +116,10 @@ function generateReply({ senderName, subject, context, matches }) {
   }
 
   const qs = questions(body);
+  const intents = detectReplyIntents(body);
   const style = styleFromExamples(matches);
   const lines = [];
-  const greeting = /^hi\b|^hello\b|^hey\b/i.test(body) ? 'Hi!' : `Hi ${name},`;
+  const greeting = /^hi\b|^hello\b|^hey\b/i.test(body) ? 'Hi!' : 'Hi ' + name + ',';
   lines.push(greeting, '');
 
   if (/\b(thank|thanks|appreciate)\b/i.test(body)) {
@@ -106,29 +130,55 @@ function generateReply({ senderName, subject, context, matches }) {
     lines.push('Thanks for reaching out.');
   }
 
-  if (qs.length) {
+  const answers = [];
+
+  if (intents.includes('issue')) {
+    answers.push('For the issues you mentioned, please send me the exact error or screenshots and the steps that reproduce them. I’ll review both and confirm what needs to be fixed.');
+  }
+  if (intents.includes('send')) {
+    answers.push('I can send that. Please confirm exactly which file, link, demo, or details you need.');
+  }
+  if (intents.includes('call')) {
+    answers.push('For the call, send me a couple of times that work for you and I’ll confirm one after I’ve reviewed the details.');
+  }
+  if (intents.includes('status')) {
+    answers.push('I’ll check the latest status and update you with the confirmed details.');
+  }
+  if (intents.includes('next_steps')) {
+    answers.push('Once I’ve reviewed everything, I’ll confirm the required fixes and the next steps before we proceed.');
+  }
+
+  if (!answers.length && qs.length) {
+    qs.forEach((q) => answers.push(answerQuestion(q)));
+  }
+
+  if (answers.length) {
     lines.push('');
-    if (qs.length === 1) {
-      lines.push(answerQuestion(qs[0]));
+    if (answers.length === 1) {
+      lines.push(answers[0]);
     } else {
-      qs.forEach((q,i)=> {
-        lines.push(`${i+1}. ${answerQuestion(q)}`);
-      });
+      answers.forEach((answer, i) => lines.push(String(i + 1) + '. ' + answer));
     }
-  } else if (/\b(issue|problem|error|not working|failed)\b/i.test(body)) {
-    lines.push('', 'I can check this. Please send the exact error or a screenshot and I’ll look into it.');
   } else if (/\b(demo|project|website|app|service)\b/i.test(body)) {
     lines.push('', 'I’ve understood the request. Send me any remaining requirement or example you want me to follow and I’ll take it from there.');
   } else {
     lines.push('', 'I’ve seen your message and I’ll follow up with the relevant details.');
   }
 
-  const confidence = qs.length || /\b(issue|problem|error|demo|project|website|app|service|update)\b/i.test(body) ? 0.78 : 0.58;
+  const confidence =
+    answers.length || qs.length || /\b(demo|project|website|app|service|update)\b/i.test(body)
+      ? 0.82
+      : 0.58;
+
   if (style.signed || lines.join('\n').length > 130) {
     lines.push('', 'Best regards,', 'Hisham');
   }
 
-  return { reply: lines.join('\n').trim(), confidence, mode: matches.length ? 'learned-rules' : 'rules' };
+  return {
+    reply: lines.join('\n').trim(),
+    confidence,
+    mode: matches.length ? 'learned-rules' : 'rules'
+  };
 }
 
 function unsupportedSpecifics(reply='', context='') {
@@ -153,6 +203,38 @@ function unsupportedSpecifics(reply='', context='') {
   }
 
   return false;
+}
+
+function preservesReplyIdentity(reply='', safeDraft='', senderName='') {
+  const output = String(reply || '');
+  const draft = String(safeDraft || '');
+  const sender = String(senderName || '').trim().split(/\s+/)[0].toLowerCase();
+
+  if (/\bbest regards\b/i.test(draft) && !/\bhisham\b/i.test(output)) {
+    return false;
+  }
+
+  if (sender && sender !== 'hisham') {
+    const lower = output.toLowerCase();
+    const signoffs = ['best regards', 'kind regards', 'regards', 'sincerely'];
+
+    for (const signoff of signoffs) {
+      const index = lower.lastIndexOf(signoff);
+      if (index >= 0) {
+        const tail = lower.slice(index, index + 120);
+        if (tail.includes(sender)) return false;
+      }
+    }
+  }
+
+  if (
+    /\b(we tested|i tested|we reviewed|i reviewed|we conducted|i conducted)\b/i.test(output) &&
+    !/\b(we tested|i tested|we reviewed|i reviewed|we conducted|i conducted)\b/i.test(draft)
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function neuralReplyLooksSafe(reply, context) {
@@ -214,14 +296,14 @@ export async function POST(request) {
   if (generated.mode !== 'quick') {
     try {
       const result = await generateNeuralReply({
-        senderName,
-        subject,
-        context,
         safeDraft: generated.reply,
         examples: matches
       });
 
-      if (neuralReplyLooksSafe(result.reply, context)) {
+      if (
+        neuralReplyLooksSafe(result.reply, context) &&
+        preservesReplyIdentity(result.reply, generated.reply, senderName)
+      ) {
         finalReply = result.reply;
         model = result.model;
         mode = matches.length ? 'neural+retrieval' : 'neural';
