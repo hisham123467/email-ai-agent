@@ -81,8 +81,12 @@ export async function GET(request) {
   const status = await edgeStatus();
 
   let sessionStatus = { connected: false };
+  let persistentSettings = null;
   if (session) {
-    sessionStatus = await rpc('email_ai_session_status', { p_session: session }).catch(() => ({ connected: false }));
+    [sessionStatus, persistentSettings] = await Promise.all([
+      rpc('email_ai_session_status', { p_session: session }).catch(() => ({ connected: false })),
+      rpc('email_ai_get_settings', { p_session: session }).catch(() => null)
+    ]);
   }
 
   if (sessionStatus?.connected && sessionStatus.status === 'pending') {
@@ -95,6 +99,8 @@ export async function GET(request) {
         gmailOAuthConfigured: Boolean(status.configured),
         gmailActivationRequired: true,
         isAdmin: false,
+        autoReply: Boolean(persistentSettings?.autoReply),
+        approvalRequired: persistentSettings?.approvalRequired !== false,
         nextStep: 'Enter activation code'
       },
       stats: { inbox: 0, needsReply: 0, waiting: 0, autoReplied: 0 },
@@ -118,6 +124,8 @@ export async function GET(request) {
         gmailOAuthConfigured: Boolean(status.configured),
         gmailActivationRequired: false,
         isAdmin: Boolean(sessionStatus.isAdmin),
+        autoReply: Boolean(persistentSettings?.autoReply),
+        approvalRequired: persistentSettings?.approvalRequired !== false,
         nextStep: sessionStatus.isAdmin ? 'Admin connected' : 'Gmail connected'
       },
       stats: statsForInbox(inbox),
@@ -179,11 +187,27 @@ export async function POST(request) {
     }
 
     if (body.action === 'set_auto_reply') {
-      return Response.json({ ok: true, status: setAutoReply(body.enabled) });
+      if (!session) {
+        return Response.json({ ok: false, error: 'Connect Gmail first.' }, { status: 401 });
+      }
+      const settings = await rpc('email_ai_set_settings', {
+        p_session: session,
+        p_auto_reply: Boolean(body.enabled),
+        p_approval_required: null
+      });
+      return Response.json({ ok: Boolean(settings?.ok), settings, status: settings });
     }
 
     if (body.action === 'set_approval_required') {
-      return Response.json({ ok: true, status: setApprovalRequired(body.enabled) });
+      if (!session) {
+        return Response.json({ ok: false, error: 'Connect Gmail first.' }, { status: 401 });
+      }
+      const settings = await rpc('email_ai_set_settings', {
+        p_session: session,
+        p_auto_reply: null,
+        p_approval_required: Boolean(body.enabled)
+      });
+      return Response.json({ ok: Boolean(settings?.ok), settings, status: settings });
     }
 
     if (body.action === 'draft_reply') {
