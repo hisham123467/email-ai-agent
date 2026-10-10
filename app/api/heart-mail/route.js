@@ -181,6 +181,33 @@ function generateReply({ senderName, subject, context, matches }) {
   };
 }
 
+function generateSensitiveDraft(senderName='', type='') {
+  const name = clean(senderName || '').split(' ')[0] || 'there';
+  const lines = ['Hi ' + name + ',', ''];
+
+  if (type === 'payment') {
+    lines.push('Thanks for your message. I’ll confirm the payment amount and payment details before sending anything.');
+  } else if (type === 'pricing') {
+    lines.push('Thanks for your message. I’ll confirm the pricing and any applicable details before I send a final answer.');
+  } else if (type === 'legal') {
+    lines.push('Thanks for your message. I’ll review the legal or agreement details carefully and confirm before I respond further.');
+  } else if (type === 'security') {
+    lines.push('Thanks for your message. I’ll verify the security-related details first. I won’t send passwords, OTPs, or security codes by email.');
+  } else if (type === 'urgent') {
+    lines.push('Thanks for flagging this. I’ve seen the message and I’ll review the details before confirming the next action.');
+  } else {
+    lines.push('Thanks for your message. I’ll review the important details and confirm before I proceed.');
+  }
+
+  lines.push('', 'Best regards,', 'Hisham');
+
+  return {
+    reply: lines.join('\n'),
+    confidence: 0.95,
+    mode: 'sensitive-safe-draft'
+  };
+}
+
 function unsupportedSpecifics(reply='', context='') {
   const source = String(context || '').toLowerCase();
   const output = String(reply || '').toLowerCase();
@@ -237,11 +264,42 @@ function preservesReplyIdentity(reply='', safeDraft='', senderName='') {
   return true;
 }
 
-function neuralReplyLooksSafe(reply, context) {
+function neuralReplyLooksSafe(reply, context, safeDraft='') {
   const text = String(reply || '').trim();
+  const lower = text.toLowerCase();
+  const draft = String(safeDraft || '');
+  const draftLower = draft.toLowerCase();
+
   if (!text || text.length < 2 || text.length > 7000) return false;
-  if (/\b(as an ai|language model|automation system|system prompt|policy says)\b/i.test(text)) return false;
+
+  if (/\b(as an ai|language model|automation system|system prompt|policy says|safe draft|draft start|draft end|polished|revised version|ready for submission)\b/i.test(text)) {
+    return false;
+  }
+
+  if (/\b(head of|chief of|director of|manager of|ceo|cto|cfo)\b/i.test(text) &&
+      !/\b(head of|chief of|director of|manager of|ceo|cto|cfo)\b/i.test(draft)) {
+    return false;
+  }
+
+  if (/\b(we recommend|i recommend)\b/i.test(text) && !/\b(we recommend|i recommend)\b/i.test(draft)) {
+    return false;
+  }
+
   if (unsupportedSpecifics(text, context)) return false;
+
+  const requiredCoverage = [
+    [/\b(error|issue|problem|fail|overlap|bug)\b/i.test(draft), /\b(error|issue|problem|screenshot|steps|review|fix)\b/i.test(text)],
+    [/\b(call|meeting|time)\b/i.test(draft), /\b(call|meeting|time)\b/i.test(text)],
+    [/\b(next steps?|proceed)\b/i.test(draft), /\b(next steps?|proceed|review)\b/i.test(text)],
+    [/\b(send|share|file|link|demo|details)\b/i.test(draft), /\b(send|share|file|link|demo|details)\b/i.test(text)]
+  ];
+
+  for (const [needed, covered] of requiredCoverage) {
+    if (needed && !covered) return false;
+  }
+
+  if (draftLower.includes('hisham') && !lower.includes('hisham')) return false;
+
   return true;
 }
 
@@ -284,16 +342,20 @@ export async function POST(request) {
   }).catch(()=>({ matches:[] }));
 
   const matches = Array.isArray(training?.matches) ? training.matches : [];
-  const generated = generateReply({ senderName, senderEmail, subject, context, matches });
+  let generated = generateReply({ senderName, senderEmail, subject, context, matches });
+
+  if (importantType) {
+    generated = generateSensitiveDraft(senderName, importantType);
+  }
 
   let finalReply = generated.reply;
-  let model = 'heart-mail-0.1-rules';
+  let model = 'heart-mail-0.2-hybrid-rules';
   let mode = generated.mode;
   let confidence = generated.confidence;
   let neural = false;
   let neuralError = null;
 
-  if (generated.mode !== 'quick') {
+  if (generated.mode !== 'quick' && !importantType) {
     try {
       const result = await generateNeuralReply({
         safeDraft: generated.reply,
@@ -301,7 +363,7 @@ export async function POST(request) {
       });
 
       if (
-        neuralReplyLooksSafe(result.reply, context) &&
+        neuralReplyLooksSafe(result.reply, context, generated.reply) &&
         preservesReplyIdentity(result.reply, generated.reply, senderName)
       ) {
         finalReply = result.reply;
