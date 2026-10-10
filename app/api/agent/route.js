@@ -55,12 +55,12 @@ async function edgeDashboard(session) {
   }
 }
 
-function statsForInbox(inbox) {
+function statsForInbox(inbox, workerStats = null) {
   return {
     inbox: inbox.length,
     needsReply: inbox.filter((m) => m.status === 'needs_reply').length,
     waiting: inbox.filter((m) => m.status === 'waiting').length,
-    autoReplied: 0
+    autoReplied: Number(workerStats?.autoReplied24h || 0)
   };
 }
 
@@ -82,10 +82,12 @@ export async function GET(request) {
 
   let sessionStatus = { connected: false };
   let persistentSettings = null;
+  let workerStats = null;
   if (session) {
-    [sessionStatus, persistentSettings] = await Promise.all([
+    [sessionStatus, persistentSettings, workerStats] = await Promise.all([
       rpc('email_ai_session_status', { p_session: session }).catch(() => ({ connected: false })),
-      rpc('email_ai_get_settings', { p_session: session }).catch(() => null)
+      rpc('email_ai_get_settings', { p_session: session }).catch(() => null),
+      rpc('email_ai_get_worker_stats', { p_session: session }).catch(() => null)
     ]);
   }
 
@@ -103,7 +105,7 @@ export async function GET(request) {
         approvalRequired: persistentSettings?.approvalRequired !== false,
         nextStep: 'Enter activation code'
       },
-      stats: { inbox: 0, needsReply: 0, waiting: 0, autoReplied: 0 },
+      stats: { inbox: 0, needsReply: 0, waiting: 0, autoReplied: Number(workerStats?.autoReplied24h || 0) },
       inbox: [],
       pendingApprovals: []
     }, {
@@ -128,7 +130,7 @@ export async function GET(request) {
         approvalRequired: persistentSettings?.approvalRequired !== false,
         nextStep: sessionStatus.isAdmin ? 'Admin connected' : 'Gmail connected'
       },
-      stats: statsForInbox(inbox),
+      stats: statsForInbox(inbox, workerStats),
       inbox,
       pendingApprovals: Array.isArray(sessionStatus.pendingApprovals)
         ? sessionStatus.pendingApprovals
