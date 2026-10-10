@@ -1,3 +1,8 @@
+import { generateNeuralReply } from '../../../lib/heart-neural';
+
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 const SUPABASE_REST = 'https://luptphcutecxkxvoijfc.supabase.co/rest/v1/rpc';
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
 
@@ -126,6 +131,38 @@ function generateReply({ senderName, subject, context, matches }) {
   return { reply: lines.join('\n').trim(), confidence, mode: matches.length ? 'learned-rules' : 'rules' };
 }
 
+function unsupportedSpecifics(reply='', context='') {
+  const source = String(context || '').toLowerCase();
+  const output = String(reply || '').toLowerCase();
+
+  const moneyPatterns = [
+    /(?:pkr|rs\.?|usd|aed|eur|gbp|\$|€|£)\s*[\d,.]+/gi,
+    /[\d,.]+\s*(?:pkr|rupees?|dollars?|dirhams?|usd|aed|eur|gbp)/gi
+  ];
+
+  for (const pattern of moneyPatterns) {
+    const values = output.match(pattern) || [];
+    for (const value of values) {
+      if (!source.includes(value.toLowerCase().replace(/\s+/g, ' '))) return true;
+    }
+  }
+
+  const specificNumbers = output.match(/\b\d{2,}(?:[.,]\d+)?\b/g) || [];
+  for (const value of specificNumbers) {
+    if (!source.includes(value)) return true;
+  }
+
+  return false;
+}
+
+function neuralReplyLooksSafe(reply, context) {
+  const text = String(reply || '').trim();
+  if (!text || text.length < 2 || text.length > 7000) return false;
+  if (/\b(as an ai|language model|automation system|system prompt|policy says)\b/i.test(text)) return false;
+  if (unsupportedSpecifics(text, context)) return false;
+  return true;
+}
+
 async function rpc(name, body) {
   const response = await fetch(`${SUPABASE_REST}/${name}`, {
     method:'POST',
@@ -167,16 +204,53 @@ export async function POST(request) {
   const matches = Array.isArray(training?.matches) ? training.matches : [];
   const generated = generateReply({ senderName, senderEmail, subject, context, matches });
 
-  const approvalRequired = Boolean(importantType) || generated.confidence < 0.65;
+  let finalReply = generated.reply;
+  let model = 'heart-mail-0.1-rules';
+  let mode = generated.mode;
+  let confidence = generated.confidence;
+  let neural = false;
+  let neuralError = null;
+
+  if (generated.mode !== 'quick') {
+    try {
+      const result = await generateNeuralReply({
+        senderName,
+        subject,
+        context,
+        safeDraft: generated.reply,
+        examples: matches
+      });
+
+      if (neuralReplyLooksSafe(result.reply, context)) {
+        finalReply = result.reply;
+        model = result.model;
+        mode = matches.length ? 'neural+retrieval' : 'neural';
+        confidence = matches.length ? 0.88 : 0.8;
+        neural = true;
+      } else {
+        neuralError = 'Neural reply failed safety validation';
+      }
+    } catch (error) {
+      neuralError = error instanceof Error ? error.message : 'Neural model unavailable';
+    }
+  }
+
+  const approvalRequired =
+    Boolean(importantType) ||
+    confidence < 0.65 ||
+    unsupportedSpecifics(finalReply, context);
 
   return Response.json({
     ok:true,
-    model:'heart-mail-0.1',
-    mode:generated.mode,
-    reply:generated.reply,
-    confidence:generated.confidence,
+    model,
+    mode,
+    neural,
+    reply:finalReply,
+    confidence,
     importantType:importantType || null,
     approvalRequired,
-    trainingMatches:matches.length
+    trainingMatches:matches.length,
+    fallbackUsed:Boolean(neuralError),
+    fallbackReason:neuralError
   }, { headers:{'Cache-Control':'no-store'} });
 }
