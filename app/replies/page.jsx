@@ -79,7 +79,7 @@ export default function RepliesPage() {
       <section className="stats">
         <div><small>Pending approval</small><strong>{data.approvals.length}</strong></div>
         <div><small>Reply records</small><strong>{data.history.length}</strong></div>
-        <div><small>Engine</small><strong>Heart Mail 0.1</strong></div>
+        <div><small>Engine</small><strong>Heart Mail 0.2 Hybrid</strong></div>
       </section>
 
       <section className="grid">
