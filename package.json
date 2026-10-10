@@ -18,5 +18,10 @@
     "react-dom": "^19.2.0",
     "zod": "^4.2.0",
     "@huggingface/transformers": "3.8.1"
+  },
+  "allowScripts": {
+    "onnxruntime-node@1.21.0": true,
+    "sharp@0.34.5": true,
+    "protobufjs@7.6.6": true
   }
 }
